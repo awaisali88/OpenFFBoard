@@ -279,6 +279,7 @@ class TMC4671 :
 		torqueP,torqueI,fluxP,fluxI,velocityP,velocityI,posP,posI,
 		tmctype,pidPrec,phiesrc,fluxoffset,seqpi,tmcIscale,encdir,temp,reg,
 		svpwm,fullCalibration,calibrated,abnindexenabled,findIndex,getState,encpol,combineEncoder,invertForce,vmTmc,
+		extphie
 	};
 
 public:
@@ -315,6 +316,7 @@ public:
 
 	uint32_t readReg(uint8_t reg);
 	void writeReg(uint8_t reg,uint32_t dat);
+	void writeRegDMA(uint8_t reg,uint32_t dat);
 	void updateReg(uint8_t reg,uint32_t dat,uint32_t mask,uint8_t shift);
 	//void SpiTxCplt(SPI_HandleTypeDef *hspi);
 

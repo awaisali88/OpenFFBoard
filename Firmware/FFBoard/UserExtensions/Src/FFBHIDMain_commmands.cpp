@@ -6,27 +6,27 @@
  */
 
 
-#include "FFBWheel.h"
+#include <FFBHIDMain.h>
 
-void FFBWheel::registerCommands(){
+void FFBHIDMain::registerCommands(){
 	//CommandHandler::registerCommands();
 
-	registerCommand("axes", FFBWheel_commands::axes, "Number of axes (1-2)");
-	registerCommand("ffbactive", FFBWheel_commands::ffbactive, "FFB status");
+	//registerCommand("axes", FFBWheel_commands::axes, "Number of axes (1-2)");
+	registerCommand("ffbactive", FFBWheel_commands::ffbactive, "FFB status",CMDFLAG_GET);
 
-	registerCommand("btntypes", FFBWheel_commands::btntypes, "Enabled button sources");
-	registerCommand("addbtn", FFBWheel_commands::addbtn, "Enable button source");
-	registerCommand("lsbtn", FFBWheel_commands::lsbtn, "Get available button sources");
+	registerCommand("btntypes", FFBWheel_commands::btntypes, "Enabled button sources",CMDFLAG_GET|CMDFLAG_SET);
+	registerCommand("addbtn", FFBWheel_commands::addbtn, "Enable button source",CMDFLAG_SET);
+	registerCommand("lsbtn", FFBWheel_commands::lsbtn, "Get available button sources",CMDFLAG_GET|CMDFLAG_STR_ONLY);
 
-	registerCommand("aintypes", FFBWheel_commands::aintypes, "Enabled analog sources");
-	registerCommand("lsain", FFBWheel_commands::lsain, "Get available analog sources");
-	registerCommand("addain", FFBWheel_commands::addain, "Enable analog source");
+	registerCommand("aintypes", FFBWheel_commands::aintypes, "Enabled analog sources",CMDFLAG_GET|CMDFLAG_SET);
+	registerCommand("lsain", FFBWheel_commands::lsain, "Get available analog sources",CMDFLAG_GET|CMDFLAG_STR_ONLY);
+	registerCommand("addain", FFBWheel_commands::addain, "Enable analog source",CMDFLAG_SET);
 
-	registerCommand("hidrate", FFBWheel_commands::hidrate, "Get estimated effect update speed");
-	registerCommand("hidsendspd", FFBWheel_commands::hidsendspd, "Change HID gamepad update rate");
+	registerCommand("hidrate", FFBWheel_commands::hidrate, "Get estimated effect update speed",CMDFLAG_GET);
+	registerCommand("hidsendspd", FFBWheel_commands::hidsendspd, "Change HID gamepad update rate",CMDFLAG_GET|CMDFLAG_SET|CMDFLAG_INFOSTRING);
 }
 
-CommandStatus FFBWheel::command(const ParsedCommand& cmd,std::vector<CommandReply>& replies){
+CommandStatus FFBHIDMain::command(const ParsedCommand& cmd,std::vector<CommandReply>& replies){
 	switch(static_cast<FFBWheel_commands>(cmd.cmdId)){
 	case FFBWheel_commands::ffbactive:
 	{
@@ -40,13 +40,13 @@ CommandStatus FFBWheel::command(const ParsedCommand& cmd,std::vector<CommandRepl
 		replies.push_back(CommandReply(flag));
 		break;
 	}
-	case FFBWheel_commands::axes:
-		if(cmd.type == CMDtype::get){
-			replies.push_back(CommandReply(this->axes_manager->getAxisCount()));
-		}else if(cmd.type == CMDtype::set){
-			this->axes_manager->setAxisCount(cmd.val);
-		}
-		break;
+//	case FFBWheel_commands::axes:
+//		if(cmd.type == CMDtype::get){
+//			replies.push_back(CommandReply(this->axes_manager->getAxisCount()));
+//		}else if(cmd.type == CMDtype::set){
+//			this->axes_manager->setAxisCount(cmd.val);
+//		}
+//		break;
 	case FFBWheel_commands::btntypes:
 		if(cmd.type == CMDtype::get){
 			replies.push_back(CommandReply(btnsources));

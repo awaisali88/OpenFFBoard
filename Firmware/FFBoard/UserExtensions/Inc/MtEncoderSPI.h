@@ -14,12 +14,13 @@
 #include "Encoder.h"
 #include "PersistentStorage.h"
 #include "CommandHandler.h"
+#include "thread.hpp"
 
 #define MAGNTEK_READ 0x80
 
-class MtEncoderSPI: public Encoder, public SPIDevice, public PersistentStorage, public CommandHandler{
+class MtEncoderSPI: public Encoder, public SPIDevice, public PersistentStorage, public CommandHandler,cpp_freertos::Thread{
 	enum class MtEncoderSPI_commands : uint32_t{
-		cspin,pos
+		cspin,pos,errors
 	};
 public:
 	MtEncoderSPI();
@@ -31,6 +32,7 @@ public:
 	static bool isCreatable() {return ext3_spi.getFreeCsPins().size() > 0 && !inUse;};
 
 	EncoderType getType(){return EncoderType::absolute;};
+	void Run();
 
 	void restoreFlash() override;
 	void saveFlash() override;
@@ -44,12 +46,12 @@ public:
 
 	void initSPI();
 	void updateAngleStatus();
-	void updateAngleStatusCb();
+	bool updateAngleStatusCb();
 
 	CommandStatus command(const ParsedCommand& cmd,std::vector<CommandReply>& replies);
 	void setCsPin(uint8_t cspin);
 
-	bool useDMA = false; // if true uses DMA for angle updates instead of polling SPI. TODO when used with tmc external encoder using DMA will hang the interrupt randomly
+	//bool useDMA = false; // if true uses DMA for angle updates instead of polling SPI. TODO when used with tmc external encoder using DMA will hang the interrupt randomly
 
 private:
 	uint8_t readSpi(uint8_t addr);
@@ -57,19 +59,23 @@ private:
 	void spiTxRxCompleted(SPIPort* port);
 
 
-	volatile bool nomag = false; // Magnet lost in last report
-	volatile bool overspeed = false; // Overspeed flag set in last report
-	volatile int32_t lastAngleInt = 0;
-	volatile int32_t curAngleInt = 0;
-	volatile int32_t curPos = 0;
-	volatile int32_t rotations = 0;
+	bool nomag = false; // Magnet lost in last report
+	bool overspeed = false; // Overspeed flag set in last report
+	int32_t lastAngleInt = 0;
+	int32_t curAngleInt = 0;
+	int32_t curPos = 0;
+	int32_t rotations = 0;
 	int32_t offset = 0;
 	uint8_t cspin = 0;
-	volatile bool updateInProgress = false;
+	bool updateInProgress = false;
+	uint32_t errors = 0;
+
 
 	uint8_t txbuf[4] = {0x03 | MAGNTEK_READ,0,0,0};
 	uint8_t rxbuf[4] = {0,0,0,0};
-
+	uint8_t rxbuf_t[4] = {0,0,0,0};
+	cpp_freertos::BinarySemaphore requestNewDataSem = cpp_freertos::BinarySemaphore(false);
+	cpp_freertos::BinarySemaphore waitForUpdateSem = cpp_freertos::BinarySemaphore(false);
 };
 
 #endif /* USEREXTENSIONS_SRC_MTENCODERSPI_H_ */

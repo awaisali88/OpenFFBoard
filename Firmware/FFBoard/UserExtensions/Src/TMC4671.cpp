@@ -783,21 +783,18 @@ void TMC4671::setPhiE_ext(int16_t phiE){
 }
 
 int16_t TMC4671::getPhiEfromExternalEncoder(){
-	int64_t phiE = (int64_t)drvEncoder->getPosAbs() * (int64_t)0xffff;
+	int64_t phiE_t = (int64_t)drvEncoder->getPosAbs() * 0xffff;
 	if(this->conf.encoderReversed){
-		phiE = -phiE;
+		phiE_t = -phiE_t;
 	}
-	phiE = (phiE / drvEncoder->getCpr());
-	phiE = ((phiE * conf.motconf.pole_pairs) & 0xffff) + externalEncoderPhieOffset; // Add offset and scale to pole pairs
+	int32_t phiE = (phiE_t / (int64_t)drvEncoder->getCpr());
+	phiE = (phiE * conf.motconf.pole_pairs) & 0xffff; // scale to pole pairs
 	//int16_t phiE = (drvEncoder->getPosAbs_f() * (float)0xffff) * conf.motconf.pole_pairs + externalEncoderPhieOffset;
-	return(phiE);
+	return(phiE+externalEncoderPhieOffset);
 }
 
 // PhiE is read only
 int16_t TMC4671::getPhiE(){
-//	if(usingExternalEncoder()){
-//		return getPhiEfromExternalEncoder();
-//	}
 	return readReg(0x53);
 }
 
@@ -2164,6 +2161,18 @@ void TMC4671::writeReg(uint8_t reg,uint32_t dat){
 	spiPort.transmit(spi_buf, 5, this, SPITIMEOUT);
 }
 
+void TMC4671::writeRegDMA(uint8_t reg,uint32_t dat){
+
+	// wait until ready
+	spiPort.takeSemaphore();
+	spi_buf[0] = (uint8_t)(0x80 | reg);
+	dat =__REV(dat);
+	memcpy(spi_buf+1,&dat,4);
+
+	// -----
+	spiPort.transmit_DMA(this->spi_buf, 5, this);
+}
+
 void TMC4671::updateReg(uint8_t reg,uint32_t dat,uint32_t mask,uint8_t shift){
 
 	uint32_t t = readReg(reg) & ~(mask << shift);
@@ -2480,9 +2489,10 @@ void TMC4671::registerCommands(){
 	registerCommand("calibrate", TMC4671_commands::fullCalibration, "Full calibration",CMDFLAG_GET);
 	registerCommand("calibrated", TMC4671_commands::calibrated, "Calibration valid",CMDFLAG_GET);
 	registerCommand("state", TMC4671_commands::getState, "Get state",CMDFLAG_GET);
-	registerCommand("combineEncoder", TMC4671_commands::combineEncoder, "Use TMC for movement, external encoder for position",CMDFLAG_GET | CMDFLAG_SET);
+	registerCommand("combineEncoder", TMC4671_commands::combineEncoder, "Use TMC for movement. External encoder for position",CMDFLAG_GET | CMDFLAG_SET);
 	registerCommand("invertForce", TMC4671_commands::invertForce, "Invert incoming forces",CMDFLAG_GET | CMDFLAG_SET);
 	registerCommand("vm", TMC4671_commands::vmTmc, "VM in mV",CMDFLAG_GET);
+	registerCommand("extphie", TMC4671_commands::extphie, "external phie",CMDFLAG_GET);
 
 }
 
@@ -2740,6 +2750,13 @@ CommandStatus TMC4671::command(const ParsedCommand& cmd,std::vector<CommandReply
 		}
 		break;
 	}
+	case TMC4671_commands::extphie:
+	{
+
+		replies.push_back(CommandReply(getPhiEfromExternalEncoder()));
+
+		break;
+	}
 	default:
 		return CommandStatus::NOT_FOUND;
 	}
@@ -2765,26 +2782,27 @@ void TMC4671::setUpExtEncTimer(){
 	if(extEncUpdater == nullptr) // Create updater thread
 		extEncUpdater = std::make_unique<TMC_ExternalEncoderUpdateThread>(this);
 	// Setup timer
-	this->externalEncoderTimer = &TIM_TMC; // Timer setup with prescaler of sysclock
-	this->externalEncoderTimer->Instance->ARR = 250;
-	this->externalEncoderTimer->Instance->PSC = (SystemCoreClock / 2000000)-1; // half clock
+	this->externalEncoderTimer = &TIM_TMC;
+	this->externalEncoderTimer->Instance->ARR = 200; // 200 = 5khz = 5 tmc cycles, 250 = 4khz, 240 = 6 tmc cycles
+	this->externalEncoderTimer->Instance->PSC = (SystemCoreClock / 2000000)+1; // timer running at half clock speed. 1µs ticks
 	this->externalEncoderTimer->Instance->CR1 = 1;
 	HAL_TIM_Base_Start_IT(this->externalEncoderTimer);
 #endif
 }
 
 /**
- * High priority task to update external encoders
+ * Medium priority task to update external encoders
  */
-TMC4671::TMC_ExternalEncoderUpdateThread::TMC_ExternalEncoderUpdateThread(TMC4671* tmc) : cpp_freertos::Thread("TMCENC",128,40),tmc(tmc){
+TMC4671::TMC_ExternalEncoderUpdateThread::TMC_ExternalEncoderUpdateThread(TMC4671* tmc) : cpp_freertos::Thread("TMCENC",128,35),tmc(tmc){
 	this->Start();
 }
 
 void TMC4671::TMC_ExternalEncoderUpdateThread::Run(){
 	while(true){
 		this->WaitForNotification();
-		if(tmc->usingExternalEncoder() && !tmc->spiPort.isTaken())
-			tmc->setPhiE_ext(tmc->getPhiEfromExternalEncoder());
+		if(tmc->usingExternalEncoder() && !tmc->spiPort.isTaken()){
+			tmc->writeRegDMA(0x1C, (tmc->getPhiEfromExternalEncoder())); // Write phiE_ext
+		}
 	}
 }
 

@@ -19,9 +19,10 @@ LocalAnalog::LocalAnalog() : CommandHandler("apin",CLSID_ANALOG_LOCAL,0) {
 	this->restoreFlash();
 
 	CommandHandler::registerCommands();
-	registerCommand("mask", LocalAnaloc_commands::pinmask, "Enabled pins");
-	registerCommand("autocal", LocalAnaloc_commands::autocal, "Autoranging");
-	registerCommand("pins", LocalAnaloc_commands::pins, "Available pins");
+	registerCommand("mask", LocalAnaloc_commands::pinmask, "Enabled pins",CMDFLAG_GET|CMDFLAG_SET);
+	registerCommand("autocal", LocalAnaloc_commands::autocal, "Autoranging",CMDFLAG_GET|CMDFLAG_SET);
+	registerCommand("pins", LocalAnaloc_commands::pins, "Available pins",CMDFLAG_GET|CMDFLAG_SET);
+	registerCommand("values", LocalAnaloc_commands::values, "Analog values",CMDFLAG_GET);
 }
 
 LocalAnalog::~LocalAnalog() {
@@ -100,6 +101,18 @@ CommandStatus LocalAnalog::command(const ParsedCommand& cmd,std::vector<CommandR
 		case LocalAnaloc_commands::pins:
 			if(cmd.type == CMDtype::get){
 				replies.push_back(CommandReply(numPins));
+			}else{
+				return CommandStatus::ERR;
+			}
+			break;
+		case LocalAnaloc_commands::values:
+			if(cmd.type == CMDtype::get){
+				std::vector<int32_t>* axes = getAxes();
+
+				for(int32_t val : *axes){
+					replies.push_back(CommandReply(val));
+				}
+
 			}else{
 				return CommandStatus::ERR;
 			}

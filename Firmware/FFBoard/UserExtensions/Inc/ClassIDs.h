@@ -18,7 +18,8 @@ enum class ClassType : uint16_t {
 	Analogsource=5,
 	Encoder=6,
 	Axis=7,
-	Extension=8
+	Extension=8,
+	Port=9
 };
 
 // Mainclasses all have the name "main" in the commandhandler system for addressing and ID 0 but can have different display names
@@ -35,6 +36,7 @@ enum class ClassType : uint16_t {
 // Unique class IDs. 16 bits (0xFFFF max)
 #define CLSID_NONE			0	// Undefined IDs or failsafe main
 #define CLSID_MAIN_FFBWHEEL 0x1
+#define CLSID_MAIN_FFBJOY	0x2
 #define CLSID_MAIN_TMCDBG 	0xB
 #define CLSID_MAIN_CAN	 	0xC
 #define CLSID_MAIN_MIDI 	0xD
@@ -47,10 +49,13 @@ enum class ClassType : uint16_t {
 #define CLSID_BTN_SPI	 	0x22
 #define CLSID_BTN_SHIFTER 	0x23
 #define CLSID_BTN_PCF	 	0x24
+#define CLSID_BTN_CAN	 	0x25
+
 
 // Analog sources
 #define CLSID_ANALOG_NONE 	0x40
 #define CLSID_ANALOG_LOCAL 	0x41
+#define CLSID_ANALOG_CAN	0x42
 
 // Encoders
 #define CLSID_ENCODER_NONE	0x60
@@ -72,6 +77,9 @@ enum class ClassType : uint16_t {
 // Internal classes
 #define CLSID_AXIS			0xA01
 #define CLSID_EFFECTSCALC	0xA02
+
+#define CLSID_CANPORT		0xC01
+#define CLSID_I2CPORT		0xC02
 
 #define CLSID_CUSTOM		0x539 // Reserved for testing
 

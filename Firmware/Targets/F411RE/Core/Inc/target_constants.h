@@ -22,8 +22,15 @@
 
 // Main classes
 #define FFBWHEEL
+#define FFBJOYSTICK
 #define MIDI
 #define TMCDEBUG
+
+/*
+ * FFBWheel uses 2 FFB axis descriptor instead of 1 axis.
+ * Might improve compatibility with direct input but will report a 2 axis ffb compatible device
+ */
+//#define FFBWHEEL_USE_1AXIS_DESC
 
 
 // Extra features

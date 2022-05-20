@@ -23,10 +23,16 @@
 
 // Main classes
 #define FFBWHEEL
+#define FFBJOYSTICK
 #define MIDI
 #define TMCDEBUG
 #define CANBRIDGE
 
+/*
+ * FFBWheel uses 2 FFB axis descriptor instead of 1 axis.
+ * Might improve compatibility with direct input but will report a 2 axis ffb compatible device
+ */
+//#define FFBWHEEL_USE_1AXIS_DESC
 
 // Extra features
 #define LOCALBUTTONS
@@ -41,10 +47,12 @@
 #define ODRIVE
 #define VESC
 #define MTENCODERSPI // requires SPI3
+#define CANBUTTONS // Requires CAN
+#define CANANALOG // Requires CAN
+#define BISSENCODER // Requires SPI3
 
 #define UARTCOMMANDS
 
-//#define TMCTEMP // Enable tmc temperature shutdown. replaced by hardware selection
 //----------------------
 
 
@@ -110,6 +118,7 @@ extern CAN_HandleTypeDef hcan1;
 extern const uint32_t canSpeedBTR_preset[];
 #endif
 
+#define DEBUGPIN // GP1 pin. see cpp target constants
 
 //Flash. 2 pages used
 /* EEPROM start address in Flash

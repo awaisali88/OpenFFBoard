@@ -18,19 +18,22 @@ const ClassIdentifier MtEncoderSPI::getInfo(){
 	return info;
 }
 
-MtEncoderSPI::MtEncoderSPI() : SPIDevice(ext3_spi,ext3_spi.getFreeCsPins()[0]), CommandHandler("mtenc",CLSID_ENCODER_MTSPI,0) {
+MtEncoderSPI::MtEncoderSPI() : SPIDevice(ENCODER_SPI_PORT,ENCODER_SPI_PORT.getFreeCsPins()[0]), CommandHandler("mtenc",CLSID_ENCODER_MTSPI,0),cpp_freertos::Thread("MTENC",256,42) {
 	MtEncoderSPI::inUse = true;
 	this->spiConfig.peripheral.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4; // 4 = 10MHz 8 = 5MHz
 	this->spiConfig.peripheral.FirstBit = SPI_FIRSTBIT_MSB;
 	this->spiConfig.peripheral.CLKPhase = SPI_PHASE_2EDGE;
 	this->spiConfig.peripheral.CLKPolarity = SPI_POLARITY_HIGH;
 	this->spiConfig.cspol = true;
+
 	restoreFlash();
 	spiPort.reserveCsPin(this->spiConfig.cs);
 
 	CommandHandler::registerCommands();
 	registerCommand("cs", MtEncoderSPI_commands::cspin, "CS pin",CMDFLAG_GET | CMDFLAG_SET);
 	registerCommand("pos", MtEncoderSPI_commands::pos, "Position",CMDFLAG_GET | CMDFLAG_SET);
+	registerCommand("errors", MtEncoderSPI_commands::errors, "Parity error count",CMDFLAG_GET);
+	this->Start();
 }
 
 MtEncoderSPI::~MtEncoderSPI() {
@@ -40,6 +43,7 @@ MtEncoderSPI::~MtEncoderSPI() {
 
 void MtEncoderSPI::restoreFlash(){
 	uint16_t conf_int = Flash_ReadDefault(ADR_MTENC_CONF1, 0);
+	offset = Flash_ReadDefault(ADR_MTENC_OFS, 0) << 2;
 	uint8_t cspin = conf_int & 0xF;
 	setCsPin(cspin);
 }
@@ -47,6 +51,33 @@ void MtEncoderSPI::restoreFlash(){
 void MtEncoderSPI::saveFlash(){
 	uint16_t conf_int = this->cspin & 0xF;
 	Flash_Write(ADR_MTENC_CONF1, conf_int);
+	Flash_Write(ADR_MTENC_OFS, offset >> 2);
+}
+
+
+void MtEncoderSPI::Run(){
+	while(true){
+		requestNewDataSem.Take(); // Wait until a position is requested
+		//spiPort.receive_DMA(spi_buf, bytes, this); // Receive next frame
+		updateAngleStatus();
+		this->WaitForNotification();  // Wait until DMA is finished
+		if(updateAngleStatusCb()){
+
+			if(curAngleInt-lastAngleInt > 0x20000){ // Underflowed
+				rotations--;
+			}
+			else if(lastAngleInt-curAngleInt > 0x20000){ // Overflowed
+				rotations++;
+			}
+			lastAngleInt = curAngleInt;
+
+			curPos = rotations * getCpr() + curAngleInt; // Update position
+		}else{
+			errors++;
+		}
+		waitForUpdateSem.Give();
+		updateInProgress = false;
+	}
 }
 
 void MtEncoderSPI::setCsPin(uint8_t cspin){
@@ -89,9 +120,10 @@ void MtEncoderSPI::setPos(int32_t pos){
 void MtEncoderSPI::spiTxRxCompleted(SPIPort* port){
 
 	if(updateInProgress){
-		updateAngleStatusCb();
+		NotifyFromISR();
+		//updateAngleStatusCb();
+		memcpy(rxbuf,rxbuf_t,4);
 	}
-
 }
 
 
@@ -99,56 +131,65 @@ void MtEncoderSPI::spiTxRxCompleted(SPIPort* port){
  * Reads the angle and diagnostic registers in burst mode
  */
 void MtEncoderSPI::updateAngleStatus(){
-	if(spiPort.isTaken() || this->updateInProgress){
-		return; // ignore this update
-	}
+
 	uint8_t txbufNew[4] = {0x03 | MAGNTEK_READ,0,0,0};
 	memcpy(this->txbuf,txbufNew,4);
-	if(useDMA){
-		this->updateInProgress = true;
-		spiPort.transmitReceive_DMA(txbuf, rxbuf, 4, this);
 
-	}else{
-		spiPort.transmitReceive(txbuf, rxbuf, 4, this,100);
-		updateAngleStatusCb();
-	}
+	spiPort.transmitReceive_DMA(txbuf, rxbuf_t, 4, this);
+
 
 }
 
-void MtEncoderSPI::updateAngleStatusCb(){
-	uint8_t angle17_10 = rxbuf[1];
-	uint8_t angle9_4 = rxbuf[2];
-	uint8_t angle3_0 = rxbuf[3];
+bool MtEncoderSPI::updateAngleStatusCb(){
+	uint32_t angle17_10 = rxbuf[1];
+	uint32_t angle9_4 = rxbuf[2];
+	uint32_t angle3_0 = rxbuf[3];
+
+	// Parity check byte 2
+	uint8_t pc1 = angle17_10 ^ angle17_10 >> 1;
+	pc1 = pc1 ^ pc1 >> 2;
+	pc1 = pc1 ^ pc1 >> 4;
+
+	uint8_t pc1_2 = angle9_4 ^ angle9_4 >> 1;
+	pc1_2 = pc1_2 ^ pc1_2 >> 2;
+	pc1_2 = pc1_2 ^ pc1_2 >> 4;
+
+	// Parity check byte 1
+	angle3_0 = angle3_0 >> 2; // shift 2
+	uint8_t pc2 = (angle3_0) ^ (angle3_0) >> 1;
+	pc2 = pc2 ^ pc2 >> 2;
+	pc2 = pc2 ^ pc2 >> 4;
 
 	nomag = 	(angle9_4 & 0x02) >> 1;
 	overspeed = (angle3_0 & 0x04) >> 2;
 	angle9_4 = 	(angle9_4 & 0xFC) >> 2;
-	angle3_0 = 	(angle3_0 & 0xE0) >> 5;
+	angle3_0 = 	angle3_0 >> 2;//(angle3_0 & 0xF0) >> 4;
+
+
+	bool parity_ok = !(pc2 & 1) && ((pc1 & 1) == (pc1_2 & 1));
 
 	curAngleInt = (angle17_10 << 10) | (angle9_4 << 4) | (angle3_0);
 
-	if(lastAngleInt < 0x10000 && curAngleInt > 0x30000){ // Underflowed
-		rotations--;
-	}
-	else if(curAngleInt < 0x10000 && lastAngleInt > 0x30000){ // Overflowed
-		rotations++;
-	}
 
-	curPos = rotations * getCpr() + curAngleInt;
-	lastAngleInt = curAngleInt;
 	this->updateInProgress = false;
+
+	return parity_ok; // ok if both bytes have even parity
 }
 
 int32_t MtEncoderSPI::getPos(){
-	int32_t returnpos = curPos - offset;
-	updateAngleStatus();
-	return returnpos;
+
+	return getPosAbs() - offset;
 }
 
 int32_t MtEncoderSPI::getPosAbs(){
-	int32_t returnpos = curAngleInt;
-	updateAngleStatus();
-	return returnpos;
+	if(updateInProgress){ // If a transfer is still in progress return the last result
+		return curPos;
+	}
+	updateInProgress = true;
+	requestNewDataSem.Give(); // Start transfer
+	waitForUpdateSem.Take(10); // Wait a bit
+
+	return curPos;
 }
 
 uint32_t MtEncoderSPI::getCpr(){
@@ -177,6 +218,9 @@ CommandStatus MtEncoderSPI::command(const ParsedCommand& cmd,std::vector<Command
 		}else{
 			return CommandStatus::ERR;
 		}
+		break;
+	case MtEncoderSPI_commands::errors:
+		replies.push_back(CommandReply(errors));
 		break;
 	default:
 		return CommandStatus::NOT_FOUND;

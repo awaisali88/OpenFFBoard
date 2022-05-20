@@ -289,9 +289,9 @@ void HAL_CAN_MspInit(CAN_HandleTypeDef* hcan)
     HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
     /* CAN1 interrupt Init */
-    HAL_NVIC_SetPriority(CAN1_TX_IRQn, 12, 0);
+    HAL_NVIC_SetPriority(CAN1_TX_IRQn, 10, 0);
     HAL_NVIC_EnableIRQ(CAN1_TX_IRQn);
-    HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 12, 0);
+    HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 10, 0);
     HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
   /* USER CODE BEGIN CAN1_MspInit 1 */
 
@@ -556,6 +556,9 @@ void HAL_SPI_MspInit(SPI_HandleTypeDef* hspi)
 
     __HAL_LINKDMA(hspi,hdmatx,hdma_spi2_tx);
 
+    /* SPI2 interrupt Init */
+    HAL_NVIC_SetPriority(SPI2_IRQn, 9, 0);
+    HAL_NVIC_EnableIRQ(SPI2_IRQn);
   /* USER CODE BEGIN SPI2_MspInit 1 */
 
   /* USER CODE END SPI2_MspInit 1 */
@@ -676,6 +679,9 @@ void HAL_SPI_MspDeInit(SPI_HandleTypeDef* hspi)
     /* SPI2 DMA DeInit */
     HAL_DMA_DeInit(hspi->hdmarx);
     HAL_DMA_DeInit(hspi->hdmatx);
+
+    /* SPI2 interrupt DeInit */
+    HAL_NVIC_DisableIRQ(SPI2_IRQn);
   /* USER CODE BEGIN SPI2_MspDeInit 1 */
 
   /* USER CODE END SPI2_MspDeInit 1 */
@@ -802,7 +808,7 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* htim_base)
     /* Peripheral clock enable */
     __HAL_RCC_TIM6_CLK_ENABLE();
     /* TIM6 interrupt Init */
-    HAL_NVIC_SetPriority(TIM6_DAC_IRQn, 9, 0);
+    HAL_NVIC_SetPriority(TIM6_DAC_IRQn, 11, 0);
     HAL_NVIC_EnableIRQ(TIM6_DAC_IRQn);
   /* USER CODE BEGIN TIM6_MspInit 1 */
 

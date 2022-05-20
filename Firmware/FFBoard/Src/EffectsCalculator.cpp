@@ -14,7 +14,7 @@
 #define X_AXIS_ENABLE 1
 #define Y_AXIS_ENABLE 2
 #define Z_AXIS_ENABLE 4
-#define DIRECTION_ENABLE (1 << MAX_AXIS)
+#define DIRECTION_ENABLE(AXES) (1 << AXES)
 
 #define EFFECT_STATE_INACTIVE 0
 
@@ -55,6 +55,13 @@ bool EffectsCalculator::isActive()
 void EffectsCalculator::setActive(bool active)
 {
 	effects_active = active;
+}
+
+/**
+ * Sets the mask where the direction enable bit is in the effect
+ */
+void EffectsCalculator::setDirectionEnableMask(uint8_t mask){
+	this->directionEnableMask = mask;
 }
 
 /*
@@ -133,12 +140,14 @@ void EffectsCalculator::calculateEffects(std::vector<std::unique_ptr<Axis>> &axe
 		forceVector = calcNonConditionEffectForce(effect);
 		//}
 
-		if (effect->enableAxis == DIRECTION_ENABLE || (effect->enableAxis & X_AXIS_ENABLE))
+		uint8_t directionEnableMask = this->directionEnableMask ? this->directionEnableMask : DIRECTION_ENABLE(axisCount);
+
+		if (effect->enableAxis & directionEnableMask || (effect->enableAxis & X_AXIS_ENABLE))
 		{
 			forceX += calcComponentForce(effect, forceVector, axes, 0);
 			forceX = clip<int32_t, int32_t>(forceX, -0x7fff, 0x7fff); // Clip
 		}
-		if (validY && ((effect->enableAxis == DIRECTION_ENABLE) || (effect->enableAxis & Y_AXIS_ENABLE)))
+		if (validY && (effect->enableAxis & directionEnableMask || (effect->enableAxis & Y_AXIS_ENABLE)))
 		{
 			forceY += calcComponentForce(effect, forceVector, axes, 1);
 			forceY = clip<int32_t, int32_t>(forceY, -0x7fff, 0x7fff); // Clip
@@ -170,11 +179,7 @@ int32_t EffectsCalculator::calcNonConditionEffectForce(FFB_Effect *effect) {
 	case FFB_EFFECT_CONSTANT:
 	{ // Constant force is just the force
 		force_vector = ((int32_t)magnitude * (int32_t)(1 + effect->gain)) >> 8;
-		// Optional filtering to reduce spikes
-		if (cfFilter_f < calcfrequency / 2 && cfFilter_f != 0 )
-		{
-			force_vector = effect->filter[0]->process(force_vector);
-		}
+
 		break;
 	}
 
@@ -257,10 +262,10 @@ int32_t EffectsCalculator::calcNonConditionEffectForce(FFB_Effect *effect) {
 
 	case FFB_EFFECT_SINE:
 	{
-		uint32_t t = HAL_GetTick() - effect->startTime;
+		float t = HAL_GetTick() - effect->startTime;
 		float freq = 1.0f / (float)(std::max<uint16_t>(effect->period, 2));
 		float phase = (float)effect->phase / (float)35999; //degrees
-		float sine = sinf(2.0 * (float)M_PI * (t * freq + phase)) * magnitude;
+		float sine = sinf(2.0 * M_PI * (t * freq + phase)) * magnitude;
 		force_vector = (int32_t)(effect->offset + sine);
 		break;
 	}
@@ -298,8 +303,8 @@ int32_t EffectsCalculator::calcComponentForce(FFB_Effect *effect, int32_t forceV
 	uint8_t axisCount = axes.size();
 	float scaleSpeed = 40;//axes[axis]->getSpeedScalerNormalized(); // TODO decide if scalers are useful or not
 	float scaleAccel = 40;//axes[axis]->getAccelScalerNormalized();
-
-	if (effect->enableAxis == DIRECTION_ENABLE)
+	uint8_t directionEnableMask = this->directionEnableMask ? this->directionEnableMask : DIRECTION_ENABLE(axisCount);
+	if (effect->enableAxis & directionEnableMask)
 	{
 		direction = effect->directionX;
 //		if (effect->conditionsCount > 1)
@@ -322,6 +327,13 @@ int32_t EffectsCalculator::calcComponentForce(FFB_Effect *effect, int32_t forceV
 	switch (effect->type)
 	{
 	case FFB_EFFECT_CONSTANT:
+	{
+		// Optional filtering to reduce spikes
+		if (cfFilter_f < calcfrequency / 2 && cfFilter_f != 0 )
+		{
+			result_torque = effect->filter[con_idx]->process(forceVector);
+		}
+	}
 	case FFB_EFFECT_RAMP:
 	case FFB_EFFECT_SQUARE:
 	case FFB_EFFECT_TRIANGLE:
@@ -592,14 +604,19 @@ void EffectsCalculator::setCfFilter(uint32_t freq,uint8_t q)
 		freq = calcfrequency / 2;
 	}
 	cfFilter_f = clip<uint32_t, uint32_t>(freq, 1, (calcfrequency / 2));
-	float f = (float)cfFilter_f / (float)calcfrequency;
+	//float f = (float)cfFilter_f / (float)calcfrequency;
 
 	for (uint8_t i = 0; i < MAX_EFFECTS; i++)
 	{
 		if (effects[i].type == FFB_EFFECT_CONSTANT)
 		{
-			effects[i].filter[0]->setFc(f);
-			effects[i].filter[0]->setQ(cfFilter_qfloatScaler * (cfFilter_q+1));
+			setFilters(&effects[i]);
+			//for(uint8_t ax = 0;ax<MAX_AXIS;ax++){
+
+//				effects[i].filter[ax]->setFc(f);
+//				effects[i].filter[ax]->setQ(cfFilter_qfloatScaler * (cfFilter_q+1));
+		//	}
+
 		}
 	}
 }

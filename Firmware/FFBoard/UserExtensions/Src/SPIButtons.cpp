@@ -24,7 +24,7 @@ const ClassIdentifier SPI_Buttons_1::getInfo(){
 }
 
 bool SPI_Buttons_1::isCreatable(){
-	return (external_spi.getFreeCsPins().size() > 0);
+	return (external_spi.hasFreePins());
 }
 
 ClassIdentifier SPI_Buttons_2::info = {
@@ -36,7 +36,7 @@ const ClassIdentifier SPI_Buttons_2::getInfo(){
 }
 
 bool SPI_Buttons_2::isCreatable(){
-	return false;//(external_spi.getFreeCsPins().size() > 0);
+	return false;//(external_spi.hasFreePins();
 }
 
 
@@ -115,8 +115,11 @@ void SPI_Buttons::setConfig(ButtonSourceConfig config){
 	spiPort.takeSemaphore();
 	spiPort.configurePort(&this->spiConfig.peripheral);
 	spiPort.giveSemaphore();
-
-	mask = pow(2,config.numButtons)-1;
+	if(config.numButtons == 64){ // Special case
+			mask = 0xffffffffffffffff;
+	}else{
+		mask = (uint64_t)pow<uint64_t>(2,config.numButtons)-(uint64_t)1; // Must be done completely in 64 bit!
+	}
 	offset = 8 - (config.numButtons % 8);
 
 	// Thrustmaster uses extra bits for IDs

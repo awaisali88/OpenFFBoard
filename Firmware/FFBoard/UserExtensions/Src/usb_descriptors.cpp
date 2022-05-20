@@ -102,10 +102,10 @@ uint8_t const usb_cdc_midi_conf[] =
 // Default ffboard names
 const usb_string_desc_t usb_ffboard_strings_default = {
 	.langId = 0x0409,
-	.manufacturer = "Open FFBoard",
-	.product = "FFBoard",
+	.manufacturer = "Next Life Technologies",
+	.product = "NLT Yoke",
 	// Interfaces start at index 4
-	.interfaces = {"FFBoard CDC", "FFBoard HID","FFBoard MIDI"}
+	.interfaces = {"NLT Yoke CDC", "NLT Yoke HID","NLT Yoke MIDI"}
 };
 
 

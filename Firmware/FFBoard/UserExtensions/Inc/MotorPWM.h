@@ -22,7 +22,7 @@ void pwmInitTimer(TIM_HandleTypeDef* timer,uint32_t channel,uint32_t period,uint
 void setPWM_HAL(uint32_t value,TIM_HandleTypeDef* timer,uint32_t channel,uint32_t period);
 
 enum class ModePWM_DRV : uint8_t {RC_PWM=0,CENTERED_PWM=1,PWM_DIR=2,PWM_DUAL=3};
-enum class SpeedPWM_DRV : uint8_t {LOW=0,MID=1,HIGH=2,VERYHIGH=3};
+enum class SpeedPWM_DRV : uint8_t {VERYLOW=0,LOW=1,MID=2,HIGH=3,VERYHIGH=4};
 
 struct PWMConfig{
 		uint32_t channel_1 = TIM_CHANNEL_1;
@@ -46,7 +46,7 @@ struct PWMConfig{
 
 class MotorPWM: public MotorDriver,public CommandHandler,public PersistentStorage{
 	enum class MotorPWM_commands : uint32_t {
-		mode,freq
+		mode,freq,cfreq
 	};
 public:
 	MotorPWM();
@@ -61,7 +61,9 @@ public:
 	void startMotor();
 
 	void setPwmSpeed(SpeedPWM_DRV spd);
+	void setCustomPwmSpeed(int32_t spd);
 	SpeedPWM_DRV getPwmSpeed();
+	int32_t getCustomPwmSpeed();
 
 	void setMode(ModePWM_DRV mode);
 	ModePWM_DRV getMode();
@@ -80,9 +82,10 @@ private:
 	float tFreq = 1; // Frequency scaling. Timer freq in MHz
 	int32_t period = 20000;
 	int32_t prescaler = 95;
+	int32_t custompwmspeed = 0;
 
 
-	SpeedPWM_DRV pwmspeed = SpeedPWM_DRV::LOW;
+	SpeedPWM_DRV pwmspeed = SpeedPWM_DRV::VERYLOW;
 	ModePWM_DRV mode = ModePWM_DRV::CENTERED_PWM;
 	bool active = false;
 

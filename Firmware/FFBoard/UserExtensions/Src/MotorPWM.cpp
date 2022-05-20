@@ -14,7 +14,7 @@
  * Mapping of names for ModePWM_DRV
  */
 const std::vector<std::string> RC_SpeedNames = {"20ms","15ms:1","10ms","5ms"};
-const std::vector<std::string> PWM_SpeedNames = {"3khz","9khz","17khz","24khz"};
+const std::vector<std::string> PWM_SpeedNames = {"1khz","3khz","9khz","17khz","24khz"};
 // Names of SpeedPWM_DRV
 const std::vector<std::string> PwmModeNames = {"RC PPM","0%-50%-100% Centered","0-100% PWM/DIR","0-100% dual PWM"};
 bool MotorPWM::pwmDriverInUse = false;
@@ -41,6 +41,7 @@ MotorPWM::MotorPWM() : CommandHandler("pwmdrv",CLSID_MOT_PWM), timerConfig(pwmTi
 
 	CommandHandler::registerCommands();
 	registerCommand("freq", MotorPWM_commands::freq, "PWM period selection",CMDFLAG_GET | CMDFLAG_SET | CMDFLAG_INFOSTRING);
+	registerCommand("cfreq", MotorPWM_commands::cfreq, "Custom PWM period",CMDFLAG_GET | CMDFLAG_SET);
 	registerCommand("mode", MotorPWM_commands::mode, "PWM mode",CMDFLAG_GET | CMDFLAG_SET | CMDFLAG_INFOSTRING);
 }
 
@@ -110,6 +111,16 @@ void MotorPWM::setPwmSpeed(SpeedPWM_DRV spd){
 	bool ok = true;
 	switch(spd){
 
+	case SpeedPWM_DRV::VERYLOW:
+		if(mode == ModePWM_DRV::RC_PWM){
+			period =  40000;  //20ms (40000/Sysclock)
+			prescaler = timerConfig.timerFreq/2000000;
+		}else{
+			period = timerConfig.timerFreq/1000; // Check if timer can count high enough for very high clock speeds!
+			prescaler = 0;
+		}
+
+	break;
 	case SpeedPWM_DRV::LOW:
 		if(mode == ModePWM_DRV::RC_PWM){
 			period =  40000;  //20ms (40000/Sysclock)
@@ -169,6 +180,30 @@ void MotorPWM::setPwmSpeed(SpeedPWM_DRV spd){
 }
 
 /**
+ * Setup the timer for different frequency presets.
+ */
+void MotorPWM::setCustomPwmSpeed(int32_t spd){
+	bool ok = true;
+	period = timerConfig.timerFreq/spd; // Check if timer can count high enough for very high clock speeds!
+	prescaler = 0;
+
+	if(ok){
+		this->custompwmspeed = spd;
+		tFreq = (float)(timerConfig.timerFreq/1000000)/(float)(prescaler+1);
+
+		pwmInitTimer(timerConfig.timer, timerConfig.channel_1,period,prescaler);
+		pwmInitTimer(timerConfig.timer, timerConfig.channel_2,period,prescaler);
+		pwmInitTimer(timerConfig.timer, timerConfig.channel_3,period,prescaler);
+		pwmInitTimer(timerConfig.timer, timerConfig.channel_4,period,prescaler);
+		HAL_TIM_MspPostInit(timerConfig.timer);
+//		setPWM_HAL(0, timer, channel_1, period);
+//		pwmInitTimer(timer, channel_2,period,prescaler);
+//		setPWM_HAL(0, timer, channel_2, period);
+		turn(0);
+	}
+}
+
+/**
  * Updates pwm pulse length
  */
 void MotorPWM::setPWM(uint32_t value,uint8_t ccr){
@@ -188,14 +223,15 @@ SpeedPWM_DRV MotorPWM::getPwmSpeed(){
 	return this->pwmspeed;
 }
 
-
-
+int32_t MotorPWM::getCustomPwmSpeed(){
+	return this->custompwmspeed;
+}
 
 void MotorPWM::saveFlash(){
 	// 0-3: mode
 	// 4-6: speed
 	uint16_t var = (uint8_t)this->mode & 0xf;
-	var |= ((uint8_t)this->pwmspeed & 0x7) << 4;
+	var |= ((uint8_t)this->pwmspeed & 0x7) << 5;
 	Flash_Write(ADR_PWM_MODE, var);
 }
 void MotorPWM::restoreFlash(){
@@ -204,7 +240,7 @@ void MotorPWM::restoreFlash(){
 		uint8_t m = var & 0xf;
 		this->setMode(ModePWM_DRV(m));
 
-		uint8_t s = (var >> 4) & 0x7;
+		uint8_t s = (var >> 5) & 0x7;
 		this->setPwmSpeed(SpeedPWM_DRV(s));
 	}
 }
@@ -224,6 +260,7 @@ void MotorPWM::stopMotor(){
 void MotorPWM::setMode(ModePWM_DRV mode){
 	this->mode = mode;
 	setPwmSpeed(pwmspeed); // Reinit timer
+	setCustomPwmSpeed(custompwmspeed);
 }
 
 ModePWM_DRV MotorPWM::getMode(){
@@ -238,19 +275,32 @@ CommandStatus MotorPWM::command(const ParsedCommand& cmd,std::vector<CommandRepl
 
 	case MotorPWM_commands::freq:
 	{
-		if(cmd.type == CMDtype::set){
-			this->setPwmSpeed((SpeedPWM_DRV)cmd.val);
-		}else if(cmd.type == CMDtype::get){
-			replies.push_back(CommandReply((uint8_t)this->getPwmSpeed()));
-		}else if(cmd.type == CMDtype::info){
-			std::vector<std::string> names = PWM_SpeedNames;
-			if(this->mode == ModePWM_DRV::RC_PWM){
-				names = RC_SpeedNames;
-			}else{
-				names = PWM_SpeedNames;
+		if(cmd.val < 10){
+			if(cmd.type == CMDtype::set){
+				this->setPwmSpeed((SpeedPWM_DRV)cmd.val);
+			}else if(cmd.type == CMDtype::get){
+				replies.push_back(CommandReply((uint8_t)this->getPwmSpeed()));
+			}else if(cmd.type == CMDtype::info){
+				std::vector<std::string> names = PWM_SpeedNames;
+				if(this->mode == ModePWM_DRV::RC_PWM){
+					names = RC_SpeedNames;
+				}else{
+					names = PWM_SpeedNames;
+				}
+				for(uint8_t i = 0; i<names.size();i++){
+					replies.push_back(CommandReply(names[i]  + ":" + std::to_string(i)+"\n"));
+				}
 			}
-			for(uint8_t i = 0; i<names.size();i++){
-				replies.push_back(CommandReply(names[i]  + ":" + std::to_string(i)+"\n"));
+		}
+		break;
+	}
+	case MotorPWM_commands::cfreq:
+	{
+		if(cmd.val > 10){
+			if(cmd.type == CMDtype::set){
+				this->setCustomPwmSpeed(cmd.val);
+			}else if(cmd.type == CMDtype::get){
+				replies.push_back(CommandReply((uint32_t)this->getCustomPwmSpeed()));
 			}
 		}
 		break;
